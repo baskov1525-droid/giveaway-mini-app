@@ -1,74 +1,26 @@
-<!DOCTYPE html>
-<html lang="ru">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Розыгрыши Призов</title>
-    <script src="https://telegram.org/js/telegram-web-app.js"></script>
-    <style>
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: var(--tg-theme-bg-color);
-            color: var(--tg-theme-text-color);
-            margin: 0;
-            padding: 20px;
-            text-align: center;
-        }
-        h1 { margin: 30px 0 10px; font-size: 28px; }
-        button {
-            background: var(--tg-theme-button-color);
-            color: var(--tg-theme-button-text-color);
-            border: none;
-            padding: 16px 32px;
-            font-size: 18px;
-            border-radius: 12px;
-            margin: 20px 0;
-            cursor: pointer;
-        }
-        #status { font-size: 18px; margin: 20px; min-height: 60px; }
-    </style>
-</head>
-<body>
-    <h1>🎉 Розыгрыш призов</h1>
-    <p id="user-name">Загрузка...</p>
-    <button id="check-btn">Проверить подключение к серверу</button>
-    <div id="status"></div>
+document.getElementById("check-btn").onclick = async () => {
+    const initData = Telegram.WebApp.initData;
 
-    <script>
-        Telegram.WebApp.ready();
-        Telegram.WebApp.expand();
+    try {
+        const response = await fetch("https://subaxillary-grayson-leprously.ngrok-free.dev/api/validate", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "ngrok-skip-browser-warning": "69420"  // ← Эта строка обходит err_6024!
+            },
+            body: JSON.stringify({ init_data: initData })
+        });
 
-        const user = Telegram.WebApp.initDataUnsafe.user;
-        if (user) {
-            document.getElementById("user-name").textContent =
-                `Привет, ${user.first_name || 'друг'}! 👋`;
+        const result = await response.json();
+        if (response.ok) {
+            document.getElementById("status").innerHTML =
+                `<span style="color:green;">✅ Успех!<br>Ты авторизован (ID: ${user?.id || 'неизвестно'})</span>`;
         } else {
-            document.getElementById("user-name").textContent = "Открой меня в Telegram!";
+            document.getElementById("status").innerHTML =
+                `<span style="color:red;">❌ Ошибка: ${result.detail || 'Неизвестно'}</span>`;
         }
-
-        document.getElementById("check-btn").onclick = async () => {
-            const initData = Telegram.WebApp.initData;
-
-            try {
-                const response = await fetch("https://subaxillary-grayson-leprously.ngrok-free.dev/api/validate", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ init_data: initData })
-                });
-
-                const result = await response.json();
-                if (response.ok) {
-                    document.getElementById("status").innerHTML =
-                        `<span style="color:green;">✅ Успех!<br>Ты авторизован (ID: ${user?.id || 'неизвестно'})</span>`;
-                } else {
-                    document.getElementById("status").innerHTML =
-                        `<span style="color:red;">❌ Ошибка: ${result.detail || 'Неизвестно'}</span>`;
-                }
-            } catch (err) {
-                document.getElementById("status").innerHTML =
-                    `<span style="color:red;">❌ Нет связи с сервером<br>Запусти backend!</span>`;
-            }
-        };
-    </script>
-</body>
-</html>
+    } catch (err) {
+        document.getElementById("status").innerHTML =
+            `<span style="color:red;">❌ Нет связи с сервером<br>Проверь ngrok</span>`;
+    }
+};
