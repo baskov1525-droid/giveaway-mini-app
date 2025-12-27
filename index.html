@@ -18,14 +18,8 @@
             flex-direction: column;
             justify-content: center;
         }
-        h1 {
-            margin: 20px 0 10px;
-            font-size: 28px;
-        }
-        p {
-            font-size: 20px;
-            margin: 10px 0;
-        }
+        h1 { font-size: 28px; margin: 20px 0 10px; }
+        p { font-size: 20px; margin: 10px 0; }
         button {
             background: var(--tg-theme-button-color);
             color: var(--tg-theme-button-text-color);
@@ -57,29 +51,29 @@
         Telegram.WebApp.ready();
         Telegram.WebApp.expand();
 
-        const user = Telegram.WebApp.initDataUnsafe.user;
+        const user = Telegram.WebApp.initDataUnsafe.user || null;
 
         if (user) {
-            document.getElementById("user-name").textContent = 
+            document.getElementById("user-name").textContent =
                 `Привет, ${user.first_name || 'друг'} ${user.last_name || ''}! 👋`;
         } else {
             document.getElementById("user-name").textContent = "Открывай в Telegram!";
         }
 
         document.getElementById("check-btn").onclick = async () => {
+            document.getElementById("status").innerHTML = "Проверяем подключение...";
+
             const initData = Telegram.WebApp.initData;
 
-            // ←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←
-            // ВСТАВЬ СВОЮ АКТУАЛЬНУЮ NGROK-ССЫЛКУ СЮДА!
+            // Твоя постоянная ngrok-ссылка
             const BACKEND_URL = "https://subaxillary-grayson-leprously.ngrok-free.dev/api/validate";
-            // ←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←
 
             try {
                 const response = await fetch(BACKEND_URL, {
                     method: "POST",
                     headers: {
                         "Content-Type": "application/json",
-                        "ngrok-skip-browser-warning": "true"  // Обход err_6024
+                        "ngrok-skip-browser-warning": "69420"
                     },
                     body: JSON.stringify({ init_data: initData })
                 });
@@ -87,16 +81,16 @@
                 const result = await response.json();
 
                 if (response.ok) {
-                    document.getElementById("status").innerHTML = 
-                        `<span style="color:green;">✅ Успех!<br>Ты авторизован в розыгрыше<br>ID: ${user?.id || 'неизвестно'}</span>`;
+                    document.getElementById("status").innerHTML =
+                        `<span style="color:green;">✅ Успех!<br>Ты авторизован<br>ID: ${user ? user.id : 'неизвестно'}</span>`;
                 } else {
-                    document.getElementById("status").innerHTML = 
+                    document.getElementById("status").innerHTML =
                         `<span style="color:red;">❌ Ошибка: ${result.detail || response.statusText}</span>`;
                 }
             } catch (err) {
                 console.error(err);
-                document.getElementById("status").innerHTML = 
-                    `<span style="color:red;">❌ Нет связи с сервером<br>Проверь, что backend и ngrok запущены</span>`;
+                document.getElementById("status").innerHTML =
+                    `<span style="color:red;">❌ Нет связи с сервером<br>Проверь backend и ngrok</span>`;
             }
         };
     </script>
