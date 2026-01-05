@@ -13,8 +13,9 @@
             color: var(--tg-theme-text-color);
             margin: 0;
             padding: 20px;
+            text-align: center;
         }
-        h1, h2 { text-align: center; margin: 10px 0; }
+        h1, h2 { margin: 10px 0; }
         .giveaway {
             border: 1px solid var(--tg-theme-hint-color);
             border-radius: 12px;
@@ -45,13 +46,11 @@
             font-weight: bold;
             cursor: pointer;
             transition: all 0.2s;
-            position: relative;
         }
         .ticket.taken { background: #4caf50; color: white; cursor: default; }
         .ticket.my { border: 3px solid gold; background: #ffeb3b; color: black; }
         .ticket.free:hover { border: 2px solid var(--tg-theme-button-color); }
         #status {
-            text-align: center;
             font-size: 18px;
             margin: 20px 0;
             min-height: 60px;
@@ -93,33 +92,45 @@
         tg.ready();
         tg.expand();
 
-        const MY_ADMIN_ID = 1913224845; // ← твой ID
+        const MY_ADMIN_ID = 1913224845; // ← твой Telegram ID
         let currentGiveawayId = null;
+
+        // Отладка: сразу покажем, кто ты
+        console.log("Mini App запущен");
+        console.log("User ID из Telegram:", tg.initDataUnsafe.user?.id);
+        console.log("MY_ADMIN_ID:", MY_ADMIN_ID);
 
         async function api(endpoint, method = "GET", body = null) {
             const initData = tg.initData;
-            const headers = { "Content-Type": "application/json" };
             try {
                 const res = await fetch(`${BACKEND}${endpoint}`, {
                     method,
-                    headers,
+                    headers: { "Content-Type": "application/json" },
                     body: body ? JSON.stringify({ ...body, init_data: initData }) : null
                 });
+                console.log(`Запрос ${endpoint}: статус ${res.status}`);
                 if (!res.ok) {
-                    const err = await res.json();
-                    throw new Error(err.detail || "Ошибка сервера");
+                    const text = await res.text();
+                    console.error("Ответ сервера:", text.substring(0, 200));
+                    throw new Error("Ошибка сервера: " + res.status);
                 }
                 return await res.json();
             } catch (e) {
-                console.error(e);
-                document.getElementById("status").innerHTML = `<span style="color:red;">Ошибка: ${e.message}</span>`;
+                console.error("Ошибка fetch:", e);
+                document.getElementById("status").innerHTML = `<span style="color:red;">Ошибка связи с сервером</span>`;
                 return null;
             }
         }
 
         async function loadGiveaways() {
+            console.log("Загружаем список розыгрышей...");
             const data = await api("/api/giveaways");
-            if (!data) return;
+            console.log("Ответ от /api/giveaways:", data);
+
+            if (!data) {
+                document.getElementById("status").innerHTML = "Не удалось загрузить розыгрыши";
+                return;
+            }
 
             const container = document.getElementById("giveaways");
             container.innerHTML = "";
@@ -136,10 +147,13 @@
                 container.appendChild(div);
             });
 
-            // Показываем кнопку создания только админу
+            // Показываем кнопки только админу
             const user = tg.initDataUnsafe.user;
             if (user && user.id === MY_ADMIN_ID) {
+                console.log("Ты админ — показываем кнопки");
                 document.getElementById("create-btn").style.display = "block";
+            } else {
+                console.log("Не админ — кнопки скрыты");
             }
         }
 
@@ -149,9 +163,6 @@
             document.getElementById("current-giveaway").style.display = "block";
 
             const ticketsData = await api(`/api/giveaway/${id}/tickets`);
-            if (!ticketsData) return;
-
-            // Заглушка — в будущем можно добавить эндпоинт /api/giveaway/{id}
             document.getElementById("title").textContent = `Розыгрыш #${id}`;
             document.getElementById("total").textContent = "100"; // ← замени на реальное
             document.getElementById("price").textContent = "100";
@@ -159,7 +170,7 @@
             const grid = document.getElementById("tickets-grid");
             grid.innerHTML = "";
 
-            const taken = ticketsData.taken || {};
+            const taken = ticketsData?.taken || {};
             const user = tg.initDataUnsafe.user;
             const myId = user ? user.id : null;
 
@@ -183,7 +194,6 @@
                 grid.appendChild(ticket);
             }
 
-            // Показываем кнопки админу
             if (user && user.id === MY_ADMIN_ID) {
                 document.getElementById("draw").style.display = "inline-block";
             }
@@ -192,7 +202,7 @@
         async function buyTicket(number) {
             if (!confirm(`Купить номерок ${number}?`)) return;
             try {
-                const res = await api(`/api/giveaway/${currentGiveawayId}/buy_ticket`, "POST", { ticket_number: number });
+                await api(`/api/giveaway/${currentGiveawayId}/buy_ticket`, "POST", { ticket_number: number });
                 document.getElementById("status").innerHTML = `<span style="color:green;">Номер ${number} ваш!</span>`;
                 openGiveaway(currentGiveawayId);
             } catch (e) {
@@ -221,7 +231,7 @@
             for (let i = 0; i < spins; i++) {
                 const num = Math.floor(Math.random() * 100) + 1;
                 status.innerHTML = `Номер: <span style="font-size:48px; color:gold;">${num}</span>`;
-                await new Promise(r => setTimeout(r, delay + i * 1.5)); // ускорение
+                await new Promise(r => setTimeout(r, delay + i * 1.5));
             }
 
             try {
