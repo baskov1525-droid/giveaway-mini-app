@@ -14,7 +14,7 @@
             margin: 0;
             padding: 20px;
         }
-        h1, h2 { text-align: center; }
+        h1, h2 { text-align: center; margin: 10px 0; }
         .giveaway {
             border: 1px solid var(--tg-theme-hint-color);
             border-radius: 12px;
@@ -45,15 +45,16 @@
             font-weight: bold;
             cursor: pointer;
             transition: all 0.2s;
+            position: relative;
         }
         .ticket.taken { background: #4caf50; color: white; cursor: default; }
-        .ticket.selected { border: 3px solid gold; background: #ffeb3b; color: black; }
+        .ticket.my { border: 3px solid gold; background: #ffeb3b; color: black; }
         .ticket.free:hover { border: 2px solid var(--tg-theme-button-color); }
         #status {
             text-align: center;
             font-size: 18px;
             margin: 20px 0;
-            min-height: 40px;
+            min-height: 60px;
             padding: 10px;
             border-radius: 8px;
             background: rgba(0,0,0,0.1);
@@ -92,10 +93,8 @@
         tg.ready();
         tg.expand();
 
+        const MY_ADMIN_ID = 1913224845; // ← твой ID
         let currentGiveawayId = null;
-
-        // Твой ID админа (должен совпадать с ADMIN_IDS в backend)
-        const MY_ADMIN_ID = 1913224845;
 
         async function api(endpoint, method = "GET", body = null) {
             const initData = tg.initData;
@@ -136,6 +135,12 @@
                 `;
                 container.appendChild(div);
             });
+
+            // Показываем кнопку создания только админу
+            const user = tg.initDataUnsafe.user;
+            if (user && user.id === MY_ADMIN_ID) {
+                document.getElementById("create-btn").style.display = "block";
+            }
         }
 
         async function openGiveaway(id) {
@@ -146,15 +151,18 @@
             const ticketsData = await api(`/api/giveaway/${id}/tickets`);
             if (!ticketsData) return;
 
-            // Пока заглушка — в будущем можно добавить эндпоинт /api/giveaway/{id}
+            // Заглушка — в будущем можно добавить эндпоинт /api/giveaway/{id}
             document.getElementById("title").textContent = `Розыгрыш #${id}`;
-            document.getElementById("total").textContent = "100"; // ← замени на реальное из API
+            document.getElementById("total").textContent = "100"; // ← замени на реальное
             document.getElementById("price").textContent = "100";
 
             const grid = document.getElementById("tickets-grid");
             grid.innerHTML = "";
 
             const taken = ticketsData.taken || {};
+            const user = tg.initDataUnsafe.user;
+            const myId = user ? user.id : null;
+
             for (let i = 1; i <= 100; i++) {
                 const ticket = document.createElement("div");
                 ticket.className = "ticket";
@@ -163,7 +171,10 @@
                 if (taken[i]) {
                     ticket.classList.add("taken");
                     ticket.title = taken[i].username ? `@${taken[i].username}` : `ID ${taken[i].user_id}`;
-                    ticket.onclick = () => releaseTicket(i);
+                    if (taken[i].user_id === myId) {
+                        ticket.classList.add("my");
+                        ticket.onclick = () => releaseTicket(i);
+                    }
                 } else {
                     ticket.classList.add("free");
                     ticket.onclick = () => buyTicket(i);
@@ -173,10 +184,8 @@
             }
 
             // Показываем кнопки админу
-            const user = tg.initDataUnsafe.user;
             if (user && user.id === MY_ADMIN_ID) {
                 document.getElementById("draw").style.display = "inline-block";
-                document.getElementById("create-btn").style.display = "inline-block";
             }
         }
 
@@ -212,7 +221,7 @@
             for (let i = 0; i < spins; i++) {
                 const num = Math.floor(Math.random() * 100) + 1;
                 status.innerHTML = `Номер: <span style="font-size:48px; color:gold;">${num}</span>`;
-                await new Promise(r => setTimeout(r, delay + i * 1)); // ускорение
+                await new Promise(r => setTimeout(r, delay + i * 1.5)); // ускорение
             }
 
             try {
@@ -259,7 +268,7 @@
             }
         };
 
-        // Запуск приложения
+        // Запуск
         loadGiveaways();
     </script>
 </body>
