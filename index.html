@@ -15,8 +15,19 @@
             padding: 20px;
         }
         h1, h2 { text-align: center; }
-        .giveaway { border: 1px solid var(--tg-theme-hint-color); border-radius: 12px; padding: 16px; margin: 16px 0; }
-        .photo { width: 100%; max-height: 300px; object-fit: cover; border-radius: 12px; }
+        .giveaway {
+            border: 1px solid var(--tg-theme-hint-color);
+            border-radius: 12px;
+            padding: 16px;
+            margin: 16px 0;
+            background: rgba(0,0,0,0.05);
+        }
+        .photo {
+            width: 100%;
+            max-height: 300px;
+            object-fit: cover;
+            border-radius: 12px;
+        }
         .tickets-grid {
             display: grid;
             grid-template-columns: repeat(auto-fill, minmax(60px, 1fr));
@@ -38,13 +49,30 @@
         .ticket.taken { background: #4caf50; color: white; cursor: default; }
         .ticket.selected { border: 3px solid gold; background: #ffeb3b; color: black; }
         .ticket.free:hover { border: 2px solid var(--tg-theme-button-color); }
-        #status { text-align: center; font-size: 18px; margin: 20px 0; min-height: 40px; }
-        button { padding: 12px 24px; margin: 8px; font-size: 16px; border-radius: 12px; }
+        #status {
+            text-align: center;
+            font-size: 18px;
+            margin: 20px 0;
+            min-height: 40px;
+            padding: 10px;
+            border-radius: 8px;
+            background: rgba(0,0,0,0.1);
+        }
+        button {
+            padding: 12px 24px;
+            margin: 8px;
+            font-size: 16px;
+            border-radius: 12px;
+            cursor: pointer;
+        }
+        #create-btn { background: #2196f3; color: white; }
+        #draw { background: #f44336; color: white; }
     </style>
 </head>
 <body>
     <h1>Розыгрыши</h1>
     <div id="giveaways"></div>
+
     <div id="current-giveaway" style="display:none;">
         <h2 id="title"></h2>
         <img id="photo" class="photo" alt="Приз">
@@ -54,7 +82,7 @@
         <div id="tickets-grid" class="tickets-grid"></div>
         <div id="status"></div>
         <button id="refresh">Обновить</button>
-        <button id="draw" style="display:none; background:#f44336; color:white;">Провести розыгрыш</button>
+        <button id="draw" style="display:none;">Провести розыгрыш</button>
         <button id="create-btn" style="display:none;">Создать розыгрыш</button>
     </div>
 
@@ -66,38 +94,48 @@
 
         let currentGiveawayId = null;
 
+        // Твой ID админа (должен совпадать с ADMIN_IDS в backend)
+        const MY_ADMIN_ID = 1913224845;
+
         async function api(endpoint, method = "GET", body = null) {
             const initData = tg.initData;
             const headers = { "Content-Type": "application/json" };
-            const res = await fetch(`${BACKEND}${endpoint}`, {
-                method,
-                headers,
-                body: body ? JSON.stringify({ ...body, init_data: initData }) : null
-            });
-            if (!res.ok) throw new Error(await res.text());
-            return res.json();
+            try {
+                const res = await fetch(`${BACKEND}${endpoint}`, {
+                    method,
+                    headers,
+                    body: body ? JSON.stringify({ ...body, init_data: initData }) : null
+                });
+                if (!res.ok) {
+                    const err = await res.json();
+                    throw new Error(err.detail || "Ошибка сервера");
+                }
+                return await res.json();
+            } catch (e) {
+                console.error(e);
+                document.getElementById("status").innerHTML = `<span style="color:red;">Ошибка: ${e.message}</span>`;
+                return null;
+            }
         }
 
         async function loadGiveaways() {
-            try {
-                const data = await api("/api/giveaways");
-                const container = document.getElementById("giveaways");
-                container.innerHTML = "";
-                data.forEach(g => {
-                    const div = document.createElement("div");
-                    div.className = "giveaway";
-                    div.innerHTML = `
-                        <h3>${g.title}</h3>
-                        <p>${g.description}</p>
-                        <img src="${g.photo_url}" style="width:100%; max-height:200px; object-fit:cover; border-radius:12px;">
-                        <p>Номерков: ${g.ticket_count} × ${g.ticket_price} ₽</p>
-                        <button onclick="openGiveaway(${g.id})">Открыть</button>
-                    `;
-                    container.appendChild(div);
-                });
-            } catch (e) {
-                document.getElementById("status").textContent = "Ошибка загрузки";
-            }
+            const data = await api("/api/giveaways");
+            if (!data) return;
+
+            const container = document.getElementById("giveaways");
+            container.innerHTML = "";
+            data.forEach(g => {
+                const div = document.createElement("div");
+                div.className = "giveaway";
+                div.innerHTML = `
+                    <h3>${g.title}</h3>
+                    <p>${g.description}</p>
+                    <img src="${g.photo_url}" style="width:100%; max-height:200px; object-fit:cover; border-radius:12px;">
+                    <p>Номерков: ${g.ticket_count} × ${g.ticket_price} ₽</p>
+                    <button onclick="openGiveaway(${g.id})">Открыть</button>
+                `;
+                container.appendChild(div);
+            });
         }
 
         async function openGiveaway(id) {
@@ -105,35 +143,40 @@
             document.getElementById("giveaways").style.display = "none";
             document.getElementById("current-giveaway").style.display = "block";
 
-            const data = await api(`/api/giveaway/${id}/tickets`, "GET");
-            document.getElementById("title").textContent = "Розыгрыш # " + id;
-            // Здесь можно загрузить title, description, photo_url, price из API (пока заглушка)
-            document.getElementById("total").textContent = "100"; // ← замени на реальное
+            const ticketsData = await api(`/api/giveaway/${id}/tickets`);
+            if (!ticketsData) return;
+
+            // Пока заглушка — в будущем можно добавить эндпоинт /api/giveaway/{id}
+            document.getElementById("title").textContent = `Розыгрыш #${id}`;
+            document.getElementById("total").textContent = "100"; // ← замени на реальное из API
             document.getElementById("price").textContent = "100";
 
             const grid = document.getElementById("tickets-grid");
             grid.innerHTML = "";
 
-            const taken = data.taken || {};
+            const taken = ticketsData.taken || {};
             for (let i = 1; i <= 100; i++) {
-                const t = document.createElement("div");
-                t.className = "ticket";
-                t.textContent = i;
+                const ticket = document.createElement("div");
+                ticket.className = "ticket";
+                ticket.textContent = i;
+
                 if (taken[i]) {
-                    t.classList.add("taken");
-                    t.title = taken[i].username || taken[i].user_id;
+                    ticket.classList.add("taken");
+                    ticket.title = taken[i].username ? `@${taken[i].username}` : `ID ${taken[i].user_id}`;
+                    ticket.onclick = () => releaseTicket(i);
                 } else {
-                    t.classList.add("free");
-                    t.onclick = () => buyTicket(i);
+                    ticket.classList.add("free");
+                    ticket.onclick = () => buyTicket(i);
                 }
-                grid.appendChild(t);
+
+                grid.appendChild(ticket);
             }
 
-            // Показываем кнопку розыгрыша только админу
+            // Показываем кнопки админу
             const user = tg.initDataUnsafe.user;
-            if (user && ADMIN_IDS.includes(user.id)) {
-                document.getElementById("draw").style.display = "block";
-                document.getElementById("create-btn").style.display = "block";
+            if (user && user.id === MY_ADMIN_ID) {
+                document.getElementById("draw").style.display = "inline-block";
+                document.getElementById("create-btn").style.display = "inline-block";
             }
         }
 
@@ -141,10 +184,21 @@
             if (!confirm(`Купить номерок ${number}?`)) return;
             try {
                 const res = await api(`/api/giveaway/${currentGiveawayId}/buy_ticket`, "POST", { ticket_number: number });
+                document.getElementById("status").innerHTML = `<span style="color:green;">Номер ${number} ваш!</span>`;
                 openGiveaway(currentGiveawayId);
-                document.getElementById("status").textContent = `Номерок ${number} ваш!`;
             } catch (e) {
-                document.getElementById("status").textContent = e.message;
+                document.getElementById("status").innerHTML = `<span style="color:red;">${e.message}</span>`;
+            }
+        }
+
+        async function releaseTicket(number) {
+            if (!confirm(`Отказаться от номерка ${number}?`)) return;
+            try {
+                await api(`/api/giveaway/${currentGiveawayId}/release_ticket`, "POST", { ticket_number: number });
+                document.getElementById("status").innerHTML = `<span style="color:green;">Номер ${number} освобождён</span>`;
+                openGiveaway(currentGiveawayId);
+            } catch (e) {
+                document.getElementById("status").innerHTML = `<span style="color:red;">${e.message}</span>`;
             }
         }
 
@@ -152,50 +206,60 @@
             const status = document.getElementById("status");
             status.innerHTML = "Прокручиваем номера... 🎰";
 
-            const spins = 60;
-            const delay = 80;
+            const spins = 80;
+            const delay = 60;
 
             for (let i = 0; i < spins; i++) {
                 const num = Math.floor(Math.random() * 100) + 1;
                 status.innerHTML = `Номер: <span style="font-size:48px; color:gold;">${num}</span>`;
-                await new Promise(r => setTimeout(r, delay));
+                await new Promise(r => setTimeout(r, delay + i * 1)); // ускорение
             }
 
-            const result = await api(`/api/giveaway/${currentGiveawayId}/draw`, "POST");
-            if (result.status === "success") {
-                const w = result.winner;
-                status.innerHTML = `<span style="font-size:32px; color:gold;">Победитель: ${w.username ? '@' + w.username : w.name} (номер ${w.ticket})</span>`;
-                confetti({ particleCount: 200, spread: 90, origin: { y: 0.6 } });
-            } else {
+            try {
+                const result = await api(`/api/giveaway/${currentGiveawayId}/draw`, "POST");
+                if (result.status === "success") {
+                    const w = result.winner;
+                    status.innerHTML = `<span style="font-size:32px; color:gold;">Победитель: ${w.username ? '@' + w.username : w.name} (номер ${w.ticket})</span>`;
+                    confetti({ particleCount: 300, spread: 100, origin: { y: 0.6 } });
+                } else {
+                    status.innerHTML = "Нет участников или ошибка";
+                }
+            } catch (e) {
                 status.innerHTML = "Ошибка розыгрыша";
             }
         }
 
         document.getElementById("draw").onclick = animateDraw;
-
         document.getElementById("refresh").onclick = () => openGiveaway(currentGiveawayId);
 
         document.getElementById("create-btn").onclick = async () => {
             const title = prompt("Название розыгрыша");
             const desc = prompt("Описание");
-            const photo = prompt("URL фото приза");
+            const photo = prompt("URL фото приза[](https://...)");
             const count = prompt("Количество номерков");
-            const price = prompt("Цена за 1 номерок");
+            const price = prompt("Цена за 1 номерок (руб)");
 
-            if (!title || !desc || !photo || !count || !price) return;
+            if (!title || !desc || !photo || !count || !price) {
+                alert("Заполните все поля!");
+                return;
+            }
 
             try {
                 const res = await api("/api/create_giveaway", "POST", {
-                    title, description: desc, photo_url: photo, ticket_count: count, ticket_price: price
+                    title,
+                    description: desc,
+                    photo_url: photo,
+                    ticket_count: parseInt(count),
+                    ticket_price: parseFloat(price)
                 });
-                alert("Розыгрыш создан! ID: " + res.giveaway_id);
+                alert(`Розыгрыш создан! ID: ${res.giveaway_id}`);
                 loadGiveaways();
             } catch (e) {
                 alert("Ошибка: " + e.message);
             }
         };
 
-        // Запуск
+        // Запуск приложения
         loadGiveaways();
     </script>
 </body>
