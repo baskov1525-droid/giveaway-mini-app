@@ -92,29 +92,33 @@
         tg.ready();
         tg.expand();
 
-        const MY_ADMIN_ID = 1913224845; // ← твой Telegram ID
-        let currentGiveawayId = null;
+        const MY_ADMIN_ID = 1913224845; // твой ID
 
-        // Отладка: сразу покажем, кто ты
         console.log("Mini App запущен");
         console.log("User ID из Telegram:", tg.initDataUnsafe.user?.id);
         console.log("MY_ADMIN_ID:", MY_ADMIN_ID);
 
         async function api(endpoint, method = "GET", body = null) {
             const initData = tg.initData;
+            const headers = {
+                "Content-Type": "application/json",
+                "ngrok-skip-browser-warning": "69420" // обход предупреждения ngrok
+            };
             try {
                 const res = await fetch(`${BACKEND}${endpoint}`, {
                     method,
-                    headers: { "Content-Type": "application/json" },
+                    headers,
                     body: body ? JSON.stringify({ ...body, init_data: initData }) : null
                 });
                 console.log(`Запрос ${endpoint}: статус ${res.status}`);
                 if (!res.ok) {
                     const text = await res.text();
-                    console.error("Ответ сервера:", text.substring(0, 200));
-                    throw new Error("Ошибка сервера: " + res.status);
+                    console.error("Ответ сервера (не JSON):", text.substring(0, 300));
+                    throw new Error(`Ошибка сервера: ${res.status}`);
                 }
-                return await res.json();
+                const json = await res.json();
+                console.log(`JSON от ${endpoint}:`, json);
+                return json;
             } catch (e) {
                 console.error("Ошибка fetch:", e);
                 document.getElementById("status").innerHTML = `<span style="color:red;">Ошибка связи с сервером</span>`;
@@ -147,13 +151,13 @@
                 container.appendChild(div);
             });
 
-            // Показываем кнопки только админу
+            // Показываем кнопки админу
             const user = tg.initDataUnsafe.user;
             if (user && user.id === MY_ADMIN_ID) {
                 console.log("Ты админ — показываем кнопки");
                 document.getElementById("create-btn").style.display = "block";
             } else {
-                console.log("Не админ — кнопки скрыты");
+                console.log("Не админ или user не найден — кнопки скрыты");
             }
         }
 
