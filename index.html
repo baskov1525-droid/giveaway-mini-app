@@ -3,8 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Розыгрыши Призов</title>
+    <title>Розыгрыш</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
     <style>
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
@@ -12,87 +13,190 @@
             color: var(--tg-theme-text-color);
             margin: 0;
             padding: 20px;
-            text-align: center;
-            min-height: 100vh;
+        }
+        h1, h2 { text-align: center; }
+        .giveaway { border: 1px solid var(--tg-theme-hint-color); border-radius: 12px; padding: 16px; margin: 16px 0; }
+        .photo { width: 100%; max-height: 300px; object-fit: cover; border-radius: 12px; }
+        .tickets-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(60px, 1fr));
+            gap: 8px;
+            margin: 16px 0;
+        }
+        .ticket {
+            aspect-ratio: 1;
+            background: var(--tg-theme-secondary-bg-color);
+            border: 2px solid transparent;
+            border-radius: 8px;
             display: flex;
-            flex-direction: column;
+            align-items: center;
             justify-content: center;
-        }
-        h1 { font-size: 28px; margin: 20px 0 10px; }
-        p { font-size: 20px; margin: 10px 0; }
-        button {
-            background: var(--tg-theme-button-color);
-            color: var(--tg-theme-button-text-color);
-            border: none;
-            padding: 16px 32px;
-            font-size: 18px;
-            border-radius: 12px;
-            margin: 30px 0;
+            font-weight: bold;
             cursor: pointer;
-            box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+            transition: all 0.2s;
         }
-        #status {
-            font-size: 18px;
-            margin: 20px;
-            min-height: 60px;
-            padding: 15px;
-            border-radius: 12px;
-            background: rgba(0,0,0,0.1);
-        }
+        .ticket.taken { background: #4caf50; color: white; cursor: default; }
+        .ticket.selected { border: 3px solid gold; background: #ffeb3b; color: black; }
+        .ticket.free:hover { border: 2px solid var(--tg-theme-button-color); }
+        #status { text-align: center; font-size: 18px; margin: 20px 0; min-height: 40px; }
+        button { padding: 12px 24px; margin: 8px; font-size: 16px; border-radius: 12px; }
     </style>
 </head>
 <body>
-    <h1>🎉 Розыгрыш призов</h1>
-    <p id="user-name">Загрузка...</p>
-    <button id="check-btn">Проверить подключение к серверу</button>
-    <div id="status"></div>
+    <h1>Розыгрыши</h1>
+    <div id="giveaways"></div>
+    <div id="current-giveaway" style="display:none;">
+        <h2 id="title"></h2>
+        <img id="photo" class="photo" alt="Приз">
+        <p id="desc"></p>
+        <p>Цена номерка: <span id="price"></span> ₽</p>
+        <p>Всего номерков: <span id="total"></span></p>
+        <div id="tickets-grid" class="tickets-grid"></div>
+        <div id="status"></div>
+        <button id="refresh">Обновить</button>
+        <button id="draw" style="display:none; background:#f44336; color:white;">Провести розыгрыш</button>
+        <button id="create-btn" style="display:none;">Создать розыгрыш</button>
+    </div>
 
     <script>
-        Telegram.WebApp.ready();
-        Telegram.WebApp.expand();
+        const BACKEND = "https://subaxillary-grayson-leprously.ngrok-free.dev";
+        const tg = Telegram.WebApp;
+        tg.ready();
+        tg.expand();
 
-        const user = Telegram.WebApp.initDataUnsafe.user || null;
+        let currentGiveawayId = null;
 
-        if (user) {
-            document.getElementById("user-name").textContent =
-                `Привет, ${user.first_name || 'друг'} ${user.last_name || ''}! 👋`;
-        } else {
-            document.getElementById("user-name").textContent = "Открывай в Telegram!";
+        async function api(endpoint, method = "GET", body = null) {
+            const initData = tg.initData;
+            const headers = { "Content-Type": "application/json" };
+            const res = await fetch(`${BACKEND}${endpoint}`, {
+                method,
+                headers,
+                body: body ? JSON.stringify({ ...body, init_data: initData }) : null
+            });
+            if (!res.ok) throw new Error(await res.text());
+            return res.json();
         }
 
-        document.getElementById("check-btn").onclick = async () => {
-            document.getElementById("status").innerHTML = "Проверяем подключение...";
+        async function loadGiveaways() {
+            try {
+                const data = await api("/api/giveaways");
+                const container = document.getElementById("giveaways");
+                container.innerHTML = "";
+                data.forEach(g => {
+                    const div = document.createElement("div");
+                    div.className = "giveaway";
+                    div.innerHTML = `
+                        <h3>${g.title}</h3>
+                        <p>${g.description}</p>
+                        <img src="${g.photo_url}" style="width:100%; max-height:200px; object-fit:cover; border-radius:12px;">
+                        <p>Номерков: ${g.ticket_count} × ${g.ticket_price} ₽</p>
+                        <button onclick="openGiveaway(${g.id})">Открыть</button>
+                    `;
+                    container.appendChild(div);
+                });
+            } catch (e) {
+                document.getElementById("status").textContent = "Ошибка загрузки";
+            }
+        }
 
-            const initData = Telegram.WebApp.initData;
+        async function openGiveaway(id) {
+            currentGiveawayId = id;
+            document.getElementById("giveaways").style.display = "none";
+            document.getElementById("current-giveaway").style.display = "block";
 
-            // Твоя постоянная ngrok-ссылка
-            const BACKEND_URL = "https://subaxillary-grayson-leprously.ngrok-free.dev/api/validate";
+            const data = await api(`/api/giveaway/${id}/tickets`, "GET");
+            document.getElementById("title").textContent = "Розыгрыш # " + id;
+            // Здесь можно загрузить title, description, photo_url, price из API (пока заглушка)
+            document.getElementById("total").textContent = "100"; // ← замени на реальное
+            document.getElementById("price").textContent = "100";
+
+            const grid = document.getElementById("tickets-grid");
+            grid.innerHTML = "";
+
+            const taken = data.taken || {};
+            for (let i = 1; i <= 100; i++) {
+                const t = document.createElement("div");
+                t.className = "ticket";
+                t.textContent = i;
+                if (taken[i]) {
+                    t.classList.add("taken");
+                    t.title = taken[i].username || taken[i].user_id;
+                } else {
+                    t.classList.add("free");
+                    t.onclick = () => buyTicket(i);
+                }
+                grid.appendChild(t);
+            }
+
+            // Показываем кнопку розыгрыша только админу
+            const user = tg.initDataUnsafe.user;
+            if (user && ADMIN_IDS.includes(user.id)) {
+                document.getElementById("draw").style.display = "block";
+                document.getElementById("create-btn").style.display = "block";
+            }
+        }
+
+        async function buyTicket(number) {
+            if (!confirm(`Купить номерок ${number}?`)) return;
+            try {
+                const res = await api(`/api/giveaway/${currentGiveawayId}/buy_ticket`, "POST", { ticket_number: number });
+                openGiveaway(currentGiveawayId);
+                document.getElementById("status").textContent = `Номерок ${number} ваш!`;
+            } catch (e) {
+                document.getElementById("status").textContent = e.message;
+            }
+        }
+
+        async function animateDraw() {
+            const status = document.getElementById("status");
+            status.innerHTML = "Прокручиваем номера... 🎰";
+
+            const spins = 60;
+            const delay = 80;
+
+            for (let i = 0; i < spins; i++) {
+                const num = Math.floor(Math.random() * 100) + 1;
+                status.innerHTML = `Номер: <span style="font-size:48px; color:gold;">${num}</span>`;
+                await new Promise(r => setTimeout(r, delay));
+            }
+
+            const result = await api(`/api/giveaway/${currentGiveawayId}/draw`, "POST");
+            if (result.status === "success") {
+                const w = result.winner;
+                status.innerHTML = `<span style="font-size:32px; color:gold;">Победитель: ${w.username ? '@' + w.username : w.name} (номер ${w.ticket})</span>`;
+                confetti({ particleCount: 200, spread: 90, origin: { y: 0.6 } });
+            } else {
+                status.innerHTML = "Ошибка розыгрыша";
+            }
+        }
+
+        document.getElementById("draw").onclick = animateDraw;
+
+        document.getElementById("refresh").onclick = () => openGiveaway(currentGiveawayId);
+
+        document.getElementById("create-btn").onclick = async () => {
+            const title = prompt("Название розыгрыша");
+            const desc = prompt("Описание");
+            const photo = prompt("URL фото приза");
+            const count = prompt("Количество номерков");
+            const price = prompt("Цена за 1 номерок");
+
+            if (!title || !desc || !photo || !count || !price) return;
 
             try {
-                const response = await fetch(BACKEND_URL, {
-                    method: "POST",
-                    headers: {
-                        "Content-Type": "application/json",
-                        "ngrok-skip-browser-warning": "69420"
-                    },
-                    body: JSON.stringify({ init_data: initData })
+                const res = await api("/api/create_giveaway", "POST", {
+                    title, description: desc, photo_url: photo, ticket_count: count, ticket_price: price
                 });
-
-                const result = await response.json();
-
-                if (response.ok) {
-                    document.getElementById("status").innerHTML =
-                        `<span style="color:green;">✅ Успех!<br>Ты авторизован<br>ID: ${user ? user.id : 'неизвестно'}</span>`;
-                } else {
-                    document.getElementById("status").innerHTML =
-                        `<span style="color:red;">❌ Ошибка: ${result.detail || response.statusText}</span>`;
-                }
-            } catch (err) {
-                console.error(err);
-                document.getElementById("status").innerHTML =
-                    `<span style="color:red;">❌ Нет связи с сервером<br>Проверь backend и ngrok</span>`;
+                alert("Розыгрыш создан! ID: " + res.giveaway_id);
+                loadGiveaways();
+            } catch (e) {
+                alert("Ошибка: " + e.message);
             }
         };
+
+        // Запуск
+        loadGiveaways();
     </script>
 </body>
 </html>
