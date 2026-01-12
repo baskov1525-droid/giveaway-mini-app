@@ -59,11 +59,12 @@
             background: rgba(0,0,0,0.1);
         }
         button {
-            padding: 12px 24px;
-            margin: 8px;
-            font-size: 16px;
+            padding: 16px 32px;
+            margin: 12px;
+            font-size: 18px;
             border-radius: 12px;
             cursor: pointer;
+            min-width: 200px;
         }
         #create-btn { background: #2196f3; color: white; }
         #draw { background: #f44336; color: white; }
@@ -83,7 +84,7 @@
         <div id="status"></div>
         <button id="refresh">Обновить</button>
         <button id="draw" style="display:none;">Провести розыгрыш</button>
-        <button id="create-btn" style="display:none;">Создать розыгрыш</button>
+        <button id="create-btn" style="display:block;">Создать розыгрыш</button> <!-- Принудительно показываем для теста -->
     </div>
 
     <script>
@@ -92,7 +93,7 @@
         tg.ready();
         tg.expand();
 
-        const MY_ADMIN_ID = 1913224845; // твой ID
+        const MY_ADMIN_ID = 1913224845;
 
         console.log("Mini App запущен");
         console.log("User ID из Telegram:", tg.initDataUnsafe.user?.id);
@@ -102,7 +103,7 @@
             const initData = tg.initData;
             const headers = {
                 "Content-Type": "application/json",
-                "ngrok-skip-browser-warning": "69420" // обход предупреждения ngrok
+                "ngrok-skip-browser-warning": "69420"
             };
             try {
                 const res = await fetch(`${BACKEND}${endpoint}`, {
@@ -121,7 +122,7 @@
                 return json;
             } catch (e) {
                 console.error("Ошибка fetch:", e);
-                document.getElementById("status").innerHTML = `<span style="color:red;">Ошибка связи с сервером</span>`;
+                document.getElementById("status").innerHTML = `<span style="color:red;">Ошибка связи</span>`;
                 return null;
             }
         }
@@ -150,15 +151,6 @@
                 `;
                 container.appendChild(div);
             });
-
-            // Показываем кнопки админу
-            const user = tg.initDataUnsafe.user;
-            if (user && user.id === MY_ADMIN_ID) {
-                console.log("Ты админ — показываем кнопки");
-                document.getElementById("create-btn").style.display = "block";
-            } else {
-                console.log("Не админ или user не найден — кнопки скрыты");
-            }
         }
 
         async function openGiveaway(id) {
