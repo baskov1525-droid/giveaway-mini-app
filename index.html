@@ -70,7 +70,7 @@
             border-radius: 8px;
             background: rgba(0,0,0,0.1);
         }
-        button, input[type="button"], input[type="submit"] {
+        button {
             padding: 16px 32px;
             margin: 12px auto;
             font-size: 18px;
@@ -110,8 +110,8 @@
         <button id="draw" style="display:none;">Провести розыгрыш</button>
     </div>
 
-    <!-- Скрытый инпут для загрузки/съёмки фото -->
-    <input type="file" id="photo-input" accept="image/*" style="display:none;" capture="environment">
+    <!-- Скрытый input для загрузки фото с устройства -->
+    <input type="file" id="photo-input" accept="image/*" style="display:none;">
 
     <script>
         const BACKEND = "https://subaxillary-grayson-leprously.ngrok-free.dev";
@@ -120,6 +120,8 @@
         tg.expand();
 
         const MY_ADMIN_ID = 1913224845;
+
+        let currentGiveawayId = null;
 
         console.log("Mini App запущен");
         console.log("User ID:", tg.initDataUnsafe.user?.id);
@@ -183,10 +185,11 @@
             document.getElementById("current-giveaway").style.display = "block";
 
             const ticketsData = await api(`/api/giveaway/${id}/tickets`);
-            // Здесь можно запросить полные данные розыгрыша, пока заглушка
-            document.getElementById("title").textContent = `Розыгрыш #${id}`;
-            document.getElementById("total").textContent = "100"; // ← замени на реальное
-            document.getElementById("price").textContent = "100";
+            const giveawayData = await api(`/api/giveaway/${id}`); // Добавь эндпоинт в backend, если нужно
+            document.getElementById("title").textContent = giveawayData?.title || `Розыгрыш #${id}`;
+            document.getElementById("total").textContent = giveawayData?.ticket_count || "Неизвестно";
+            document.getElementById("price").textContent = giveawayData?.ticket_price || "Неизвестно";
+            document.getElementById("photo").src = giveawayData?.photo_url || "";
 
             const grid = document.getElementById("tickets-grid");
             grid.innerHTML = "";
@@ -195,7 +198,7 @@
             const user = tg.initDataUnsafe.user;
             const myId = user ? user.id : null;
 
-            for (let i = 1; i <= 100; i++) {
+            for (let i = 1; i <= (giveawayData?.ticket_count || 100); i++) {
                 const ticket = document.createElement("div");
                 ticket.className = "ticket";
                 ticket.textContent = i;
@@ -269,7 +272,7 @@
             }
         }
 
-        // Создание розыгрыша с выбором фото
+        // Создание розыгрыша с загрузкой фото
         document.getElementById("create-btn").onclick = () => {
             const title = prompt("Название розыгрыша");
             const desc = prompt("Описание");
@@ -281,45 +284,34 @@
                 return;
             }
 
-            // Показываем выбор фото
-            const choice = prompt("Как добавить фото?\n1 - Ввести URL\n2 - Загрузить с устройства\n3 - Сделать фото камерой\n\nВведи число:");
-            let photoPromise;
+            // Открываем выбор файла
+            const input = document.getElementById("photo-input");
+            input.click();
 
-            if (choice === "1") {
-                const url = prompt("Вставьте URL фото:");
-                if (url) photoPromise = Promise.resolve(url);
-                else return;
-            } else if (choice === "2" || choice === "3") {
-                const input = document.getElementById("photo-input");
-                input.capture = choice === "3" ? "camera" : "";
-                input.click();
+            input.onchange = () => {
+                const file = input.files[0];
+                if (!file) {
+                    alert("Фото не выбрано");
+                    return;
+                }
 
-                photoPromise = new Promise((resolve, reject) => {
-                    input.onchange = () => {
-                        const file = input.files[0];
-                        if (!file) return reject("Фото не выбрано");
-                        const reader = new FileReader();
-                        reader.onload = () => resolve(reader.result);
-                        reader.readAsDataURL(file);
-                    };
-                });
-            } else {
-                alert("Неверный выбор");
-                return;
-            }
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    const photo = e.target.result; // base64
 
-            photoPromise.then(photo => {
-                api("/api/create_giveaway", "POST", {
-                    title,
-                    description: desc,
-                    photo_url: photo,
-                    ticket_count: parseInt(count),
-                    ticket_price: parseFloat(price)
-                }).then(res => {
-                    alert(`Розыгрыш создан! ID: ${res.giveaway_id}`);
-                    loadGiveaways();
-                }).catch(e => alert("Ошибка: " + e.message));
-            }).catch(e => alert(e));
+                    api("/api/create_giveaway", "POST", {
+                        title,
+                        description: desc,
+                        photo_url: photo, // base64
+                        ticket_count: parseInt(count),
+                        ticket_price: parseFloat(price)
+                    }).then(res => {
+                        alert(`Розыгрыш создан! ID: ${res.giveaway_id}`);
+                        loadGiveaways();
+                    }).catch(e => alert("Ошибка: " + e.message));
+                };
+                reader.readAsDataURL(file);
+            };
         };
 
         document.getElementById("draw").onclick = animateDraw;
