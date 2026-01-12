@@ -34,6 +34,7 @@
             padding: 8px 12px;
             border-radius: 8px;
             cursor: pointer;
+            font-size: 14px;
         }
         .photo {
             width: 100%;
@@ -110,7 +111,7 @@
         <button id="draw" style="display:none;">Провести розыгрыш</button>
     </div>
 
-    <!-- Скрытый input для загрузки фото с устройства -->
+    <!-- Input для загрузки фото -->
     <input type="file" id="photo-input" accept="image/*" style="display:none;">
 
     <script>
@@ -171,7 +172,7 @@
         async function deleteGiveaway(id) {
             if (!confirm("Удалить розыгрыш навсегда?")) return;
             try {
-                await api(`/api/giveaway/${id}/delete`, "DELETE");
+                await api(`/api/giveaway/${id}`, "DELETE");
                 alert("Розыгрыш удалён");
                 loadGiveaways();
             } catch (e) {
@@ -184,12 +185,14 @@
             document.getElementById("giveaways").style.display = "none";
             document.getElementById("current-giveaway").style.display = "block";
 
+            const giveawayData = await api(`/api/giveaway/${id}`);
             const ticketsData = await api(`/api/giveaway/${id}/tickets`);
-            const giveawayData = await api(`/api/giveaway/${id}`); // Добавь эндпоинт в backend, если нужно
+
             document.getElementById("title").textContent = giveawayData?.title || `Розыгрыш #${id}`;
-            document.getElementById("total").textContent = giveawayData?.ticket_count || "Неизвестно";
-            document.getElementById("price").textContent = giveawayData?.ticket_price || "Неизвестно";
+            document.getElementById("desc").textContent = giveawayData?.description || "";
             document.getElementById("photo").src = giveawayData?.photo_url || "";
+            document.getElementById("price").textContent = giveawayData?.ticket_price || "—";
+            document.getElementById("total").textContent = giveawayData?.ticket_count || "—";
 
             const grid = document.getElementById("tickets-grid");
             grid.innerHTML = "";
@@ -198,7 +201,9 @@
             const user = tg.initDataUnsafe.user;
             const myId = user ? user.id : null;
 
-            for (let i = 1; i <= (giveawayData?.ticket_count || 100); i++) {
+            const totalTickets = giveawayData?.ticket_count || 100;
+
+            for (let i = 1; i <= totalTickets; i++) {
                 const ticket = document.createElement("div");
                 ticket.className = "ticket";
                 ticket.textContent = i;
@@ -249,11 +254,14 @@
             const status = document.getElementById("status");
             status.innerHTML = "Прокручиваем номера... 🎰";
 
+            const giveawayData = await api(`/api/giveaway/${currentGiveawayId}`);
+            const maxTicket = giveawayData?.ticket_count || 100;
+
             const spins = 80;
             const delay = 60;
 
             for (let i = 0; i < spins; i++) {
-                const num = Math.floor(Math.random() * 100) + 1;
+                const num = Math.floor(Math.random() * maxTicket) + 1;
                 status.innerHTML = `Номер: <span style="font-size:48px; color:gold;">${num}</span>`;
                 await new Promise(r => setTimeout(r, delay + i * 1.5));
             }
@@ -272,7 +280,9 @@
             }
         }
 
-        // Создание розыгрыша с загрузкой фото
+        document.getElementById("draw").onclick = animateDraw;
+        document.getElementById("refresh").onclick = () => openGiveaway(currentGiveawayId);
+
         document.getElementById("create-btn").onclick = () => {
             const title = prompt("Название розыгрыша");
             const desc = prompt("Описание");
@@ -284,7 +294,6 @@
                 return;
             }
 
-            // Открываем выбор файла
             const input = document.getElementById("photo-input");
             input.click();
 
@@ -297,12 +306,12 @@
 
                 const reader = new FileReader();
                 reader.onload = (e) => {
-                    const photo = e.target.result; // base64
+                    const photo = e.target.result;
 
                     api("/api/create_giveaway", "POST", {
                         title,
                         description: desc,
-                        photo_url: photo, // base64
+                        photo_url: photo,
                         ticket_count: parseInt(count),
                         ticket_price: parseFloat(price)
                     }).then(res => {
@@ -313,9 +322,6 @@
                 reader.readAsDataURL(file);
             };
         };
-
-        document.getElementById("draw").onclick = animateDraw;
-        document.getElementById("refresh").onclick = () => openGiveaway(currentGiveawayId);
 
         // Запуск
         loadGiveaways();
