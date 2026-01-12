@@ -84,8 +84,8 @@
         <div id="tickets-grid" class="tickets-grid"></div>
         <div id="status"></div>
         <button id="refresh">Обновить</button>
-        <button id="draw">Провести розыгрыш</button>
-        <button id="create-btn">Создать розыгрыш</button>
+        <button id="draw" style="display:block;">Провести розыгрыш</button>
+        <button id="create-btn" style="display:block;">Создать розыгрыш</button>
     </div>
 
     <script>
@@ -99,6 +99,15 @@
         console.log("Mini App запущен");
         console.log("User ID из Telegram:", tg.initDataUnsafe.user?.id);
         console.log("MY_ADMIN_ID:", MY_ADMIN_ID);
+
+        // Принудительно показываем кнопки после загрузки DOM
+        setTimeout(() => {
+            const createBtn = document.getElementById("create-btn");
+            const drawBtn = document.getElementById("draw");
+            if (createBtn) createBtn.style.display = "block";
+            if (drawBtn) drawBtn.style.display = "block";
+            console.log("Принудительно показали кнопки");
+        }, 500);
 
         async function api(endpoint, method = "GET", body = null) {
             const initData = tg.initData;
@@ -161,7 +170,7 @@
 
             const ticketsData = await api(`/api/giveaway/${id}/tickets`);
             document.getElementById("title").textContent = `Розыгрыш #${id}`;
-            document.getElementById("total").textContent = "100"; // ← замени на реальное
+            document.getElementById("total").textContent = "100";
             document.getElementById("price").textContent = "100";
 
             const grid = document.getElementById("tickets-grid");
@@ -191,9 +200,7 @@
                 grid.appendChild(ticket);
             }
 
-            // Показываем кнопки админу
             if (user && user.id === MY_ADMIN_ID) {
-                console.log("Ты админ — показываем кнопки");
                 document.getElementById("draw").style.display = "block";
             }
         }
@@ -277,15 +284,8 @@
             }
         };
 
-        // Принудительно показываем кнопки для теста (потом можно убрать)
-        document.getElementById("create-btn").style.display = "block";
-        document.getElementById("draw").style.display = "block";
-
         // Запуск
         loadGiveaways();
     </script>
-<div style="position:fixed; bottom:10px; left:0; right:0; text-align:center; background:rgba(0,0,0,0.5); padding:10px;">
-    <button onclick="document.getElementById('create-btn').click()" style="background:#2196f3; color:white; padding:16px 32px; font-size:20px;">Показать кнопку создания</button>
-</div>
 </body>
 </html>
