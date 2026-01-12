@@ -94,7 +94,6 @@
 <body>
     <h1>Розыгрыши</h1>
 
-    <!-- Кнопка создания на главном экране -->
     <button id="create-btn">Создать розыгрыш</button>
 
     <div id="giveaways"></div>
@@ -111,7 +110,6 @@
         <button id="draw" style="display:none;">Провести розыгрыш</button>
     </div>
 
-    <!-- Input для загрузки фото -->
     <input type="file" id="photo-input" accept="image/*" style="display:none;">
 
     <script>
@@ -174,7 +172,8 @@
             try {
                 await api(`/api/giveaway/${id}`, "DELETE");
                 alert("Розыгрыш удалён");
-                loadGiveaways();
+                await loadGiveaways();  // ← перезагрузка списка
+                document.getElementById("status").innerHTML = "<span style='color:green;'>Розыгрыш удалён</span>";
             } catch (e) {
                 alert("Ошибка удаления: " + e.message);
             }
@@ -301,6 +300,11 @@
                 const file = input.files[0];
                 if (!file) {
                     alert("Фото не выбрано");
+                    return;
+                }
+
+                if (file.size > 2 * 1024 * 1024) {
+                    alert("Фото слишком большое! Максимум 2 МБ.");
                     return;
                 }
 
