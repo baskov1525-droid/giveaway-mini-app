@@ -22,6 +22,18 @@
             padding: 16px;
             margin: 16px 0;
             background: rgba(0,0,0,0.05);
+            position: relative;
+        }
+        .delete-btn {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: #ff4444;
+            color: white;
+            border: none;
+            padding: 8px 12px;
+            border-radius: 8px;
+            cursor: pointer;
         }
         .photo {
             width: 100%;
@@ -58,7 +70,7 @@
             border-radius: 8px;
             background: rgba(0,0,0,0.1);
         }
-        button {
+        button, input[type="button"], input[type="submit"] {
             padding: 16px 32px;
             margin: 12px auto;
             font-size: 18px;
@@ -69,10 +81,21 @@
         }
         #create-btn { background: #2196f3; color: white; }
         #draw { background: #f44336; color: white; }
+        #photo-preview {
+            max-width: 100%;
+            max-height: 200px;
+            margin: 10px auto;
+            display: none;
+            border-radius: 12px;
+        }
     </style>
 </head>
 <body>
     <h1>Розыгрыши</h1>
+
+    <!-- Кнопка создания на главном экране -->
+    <button id="create-btn">Создать розыгрыш</button>
+
     <div id="giveaways"></div>
 
     <div id="current-giveaway" style="display:none;">
@@ -84,9 +107,11 @@
         <div id="tickets-grid" class="tickets-grid"></div>
         <div id="status"></div>
         <button id="refresh">Обновить</button>
-        <button id="draw" style="display:block;">Провести розыгрыш</button>
-        <button id="create-btn" style="display:block;">Создать розыгрыш</button>
+        <button id="draw" style="display:none;">Провести розыгрыш</button>
     </div>
+
+    <!-- Скрытый инпут для загрузки/съёмки фото -->
+    <input type="file" id="photo-input" accept="image/*" style="display:none;" capture="environment">
 
     <script>
         const BACKEND = "https://subaxillary-grayson-leprously.ngrok-free.dev";
@@ -97,17 +122,7 @@
         const MY_ADMIN_ID = 1913224845;
 
         console.log("Mini App запущен");
-        console.log("User ID из Telegram:", tg.initDataUnsafe.user?.id);
-        console.log("MY_ADMIN_ID:", MY_ADMIN_ID);
-
-        // Принудительно показываем кнопки после загрузки DOM
-        setTimeout(() => {
-            const createBtn = document.getElementById("create-btn");
-            const drawBtn = document.getElementById("draw");
-            if (createBtn) createBtn.style.display = "block";
-            if (drawBtn) drawBtn.style.display = "block";
-            console.log("Принудительно показали кнопки");
-        }, 500);
+        console.log("User ID:", tg.initDataUnsafe.user?.id);
 
         async function api(endpoint, method = "GET", body = null) {
             const initData = tg.initData;
@@ -121,31 +136,18 @@
                     headers,
                     body: body ? JSON.stringify({ ...body, init_data: initData }) : null
                 });
-                console.log(`Запрос ${endpoint}: статус ${res.status}`);
-                if (!res.ok) {
-                    const text = await res.text();
-                    console.error("Ответ сервера (не JSON):", text.substring(0, 300));
-                    throw new Error(`Ошибка сервера: ${res.status}`);
-                }
-                const json = await res.json();
-                console.log(`JSON от ${endpoint}:`, json);
-                return json;
+                if (!res.ok) throw new Error(`Статус ${res.status}`);
+                return await res.json();
             } catch (e) {
-                console.error("Ошибка fetch:", e);
-                document.getElementById("status").innerHTML = `<span style="color:red;">Ошибка связи</span>`;
+                console.error("Ошибка API:", e);
+                document.getElementById("status").innerHTML = `<span style="color:red;">Ошибка: ${e.message}</span>`;
                 return null;
             }
         }
 
         async function loadGiveaways() {
-            console.log("Загружаем список розыгрышей...");
             const data = await api("/api/giveaways");
-            console.log("Ответ от /api/giveaways:", data);
-
-            if (!data) {
-                document.getElementById("status").innerHTML = "Не удалось загрузить розыгрыши";
-                return;
-            }
+            if (!data) return;
 
             const container = document.getElementById("giveaways");
             container.innerHTML = "";
@@ -158,9 +160,21 @@
                     <img src="${g.photo_url}" style="width:100%; max-height:200px; object-fit:cover; border-radius:12px;">
                     <p>Номерков: ${g.ticket_count} × ${g.ticket_price} ₽</p>
                     <button onclick="openGiveaway(${g.id})">Открыть</button>
+                    <button class="delete-btn" onclick="deleteGiveaway(${g.id})">Удалить</button>
                 `;
                 container.appendChild(div);
             });
+        }
+
+        async function deleteGiveaway(id) {
+            if (!confirm("Удалить розыгрыш навсегда?")) return;
+            try {
+                await api(`/api/giveaway/${id}/delete`, "DELETE");
+                alert("Розыгрыш удалён");
+                loadGiveaways();
+            } catch (e) {
+                alert("Ошибка удаления: " + e.message);
+            }
         }
 
         async function openGiveaway(id) {
@@ -169,8 +183,9 @@
             document.getElementById("current-giveaway").style.display = "block";
 
             const ticketsData = await api(`/api/giveaway/${id}/tickets`);
+            // Здесь можно запросить полные данные розыгрыша, пока заглушка
             document.getElementById("title").textContent = `Розыгрыш #${id}`;
-            document.getElementById("total").textContent = "100";
+            document.getElementById("total").textContent = "100"; // ← замени на реальное
             document.getElementById("price").textContent = "100";
 
             const grid = document.getElementById("tickets-grid");
@@ -254,35 +269,61 @@
             }
         }
 
-        document.getElementById("draw").onclick = animateDraw;
-        document.getElementById("refresh").onclick = () => openGiveaway(currentGiveawayId);
-
-        document.getElementById("create-btn").onclick = async () => {
+        // Создание розыгрыша с выбором фото
+        document.getElementById("create-btn").onclick = () => {
             const title = prompt("Название розыгрыша");
             const desc = prompt("Описание");
-            const photo = prompt("URL фото приза[](https://...)");
             const count = prompt("Количество номерков");
             const price = prompt("Цена за 1 номерок (руб)");
 
-            if (!title || !desc || !photo || !count || !price) {
+            if (!title || !desc || !count || !price) {
                 alert("Заполните все поля!");
                 return;
             }
 
-            try {
-                const res = await api("/api/create_giveaway", "POST", {
+            // Показываем выбор фото
+            const choice = prompt("Как добавить фото?\n1 - Ввести URL\n2 - Загрузить с устройства\n3 - Сделать фото камерой\n\nВведи число:");
+            let photoPromise;
+
+            if (choice === "1") {
+                const url = prompt("Вставьте URL фото:");
+                if (url) photoPromise = Promise.resolve(url);
+                else return;
+            } else if (choice === "2" || choice === "3") {
+                const input = document.getElementById("photo-input");
+                input.capture = choice === "3" ? "camera" : "";
+                input.click();
+
+                photoPromise = new Promise((resolve, reject) => {
+                    input.onchange = () => {
+                        const file = input.files[0];
+                        if (!file) return reject("Фото не выбрано");
+                        const reader = new FileReader();
+                        reader.onload = () => resolve(reader.result);
+                        reader.readAsDataURL(file);
+                    };
+                });
+            } else {
+                alert("Неверный выбор");
+                return;
+            }
+
+            photoPromise.then(photo => {
+                api("/api/create_giveaway", "POST", {
                     title,
                     description: desc,
                     photo_url: photo,
                     ticket_count: parseInt(count),
                     ticket_price: parseFloat(price)
-                });
-                alert(`Розыгрыш создан! ID: ${res.giveaway_id}`);
-                loadGiveaways();
-            } catch (e) {
-                alert("Ошибка: " + e.message);
-            }
+                }).then(res => {
+                    alert(`Розыгрыш создан! ID: ${res.giveaway_id}`);
+                    loadGiveaways();
+                }).catch(e => alert("Ошибка: " + e.message));
+            }).catch(e => alert(e));
         };
+
+        document.getElementById("draw").onclick = animateDraw;
+        document.getElementById("refresh").onclick = () => openGiveaway(currentGiveawayId);
 
         // Запуск
         loadGiveaways();
