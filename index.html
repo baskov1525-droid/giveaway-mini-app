@@ -80,6 +80,10 @@
             min-width: 220px;
             display: block;
         }
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
         #create-btn { background: #2196f3; color: white; }
         #draw { background: #f44336; color: white; }
     </style>
@@ -114,6 +118,7 @@
         const MY_ADMIN_ID = 1913224845;
 
         let currentGiveawayId = null;
+        let autoRefreshInterval = null;
 
         console.log("Mini App запущен");
         console.log("User ID:", tg.initDataUnsafe.user?.id);
@@ -142,25 +147,29 @@
             }
         }
 
-        async function loadGiveaways() {
-            const data = await api("/api/giveaways");
-            if (!data) return;
+        async function loadGiveaways(silent = false) {
+            try {
+                const data = await api("/api/giveaways");
+                if (!data) return;
 
-            const container = document.getElementById("giveaways");
-            container.innerHTML = "";
-            data.forEach(g => {
-                const div = document.createElement("div");
-                div.className = "giveaway";
-                div.innerHTML = `
-                    <h3>${g.title}</h3>
-                    <p>${g.description}</p>
-                    <img src="${g.photo_url}" style="width:100%; max-height:200px; object-fit:cover; border-radius:12px;">
-                    <p>Номерков: ${g.ticket_count} × ${g.ticket_price} ₽</p>
-                    <button onclick="openGiveaway(${g.id})">Открыть</button>
-                    <button class="delete-btn" onclick="deleteGiveaway(${g.id})">Удалить</button>
-                `;
-                container.appendChild(div);
-            });
+                const container = document.getElementById("giveaways");
+                container.innerHTML = "";
+                data.forEach(g => {
+                    const div = document.createElement("div");
+                    div.className = "giveaway";
+                    div.innerHTML = `
+                        <h3>${g.title}</h3>
+                        <p>${g.description}</p>
+                        <img src="${g.photo_url}" style="width:100%; max-height:200px; object-fit:cover; border-radius:12px;">
+                        <p>Номерков: ${g.ticket_count} × ${g.ticket_price} ₽</p>
+                        <button onclick="openGiveaway(${g.id})">Открыть</button>
+                        ${g.status !== 'finished' ? `<button class="delete-btn" onclick="deleteGiveaway(${g.id})">Удалить</button>` : ''}
+                    `;
+                    container.appendChild(div);
+                });
+            } catch (e) {
+                if (!silent) document.getElementById("status").innerHTML = "Не удалось загрузить список";
+            }
         }
 
         async function deleteGiveaway(id) {
@@ -176,10 +185,7 @@
                         "ngrok-skip-browser-warning": "69420"
                     }
                 });
-                if (!res.ok) {
-                    const text = await res.text();
-                    throw new Error(`Статус ${res.status}: ${text}`);
-                }
+                if (!res.ok) throw new Error(`Статус ${res.status}`);
                 alert("Розыгрыш удалён");
                 await loadGiveaways();
             } catch (e) {
@@ -192,46 +198,58 @@
             document.getElementById("giveaways").style.display = "none";
             document.getElementById("current-giveaway").style.display = "block";
 
-            const giveawayData = await api(`/api/giveaway/${id}`);
-            const ticketsData = await api(`/api/giveaway/${id}/tickets`);
+            try {
+                const giveawayData = await api(`/api/giveaway/${id}`);
+                const ticketsData = await api(`/api/giveaway/${id}/tickets`);
 
-            document.getElementById("title").textContent = giveawayData?.title || `Розыгрыш #${id}`;
-            document.getElementById("desc").textContent = giveawayData?.description || "";
-            document.getElementById("photo").src = giveawayData?.photo_url || "";
-            document.getElementById("price").textContent = giveawayData?.ticket_price || "—";
-            document.getElementById("total").textContent = giveawayData?.ticket_count || "—";
+                document.getElementById("title").textContent = giveawayData?.title || `Розыгрыш #${id}`;
+                document.getElementById("desc").textContent = giveawayData?.description || "";
+                document.getElementById("photo").src = giveawayData?.photo_url || "";
+                document.getElementById("price").textContent = giveawayData?.ticket_price || "—";
+                document.getElementById("total").textContent = giveawayData?.ticket_count || "—";
 
-            const grid = document.getElementById("tickets-grid");
-            grid.innerHTML = "";
+                const grid = document.getElementById("tickets-grid");
+                grid.innerHTML = "";
 
-            const taken = ticketsData?.taken || {};
-            const user = tg.initDataUnsafe.user;
-            const myId = user ? user.id : null;
+                const taken = ticketsData?.taken || {};
+                const user = tg.initDataUnsafe.user;
+                const myId = user ? user.id : null;
 
-            const totalTickets = giveawayData?.ticket_count || 100;
+                const totalTickets = giveawayData?.ticket_count || 100;
 
-            for (let i = 1; i <= totalTickets; i++) {
-                const ticket = document.createElement("div");
-                ticket.className = "ticket";
-                ticket.textContent = i;
+                for (let i = 1; i <= totalTickets; i++) {
+                    const ticket = document.createElement("div");
+                    ticket.className = "ticket";
+                    ticket.textContent = i;
 
-                if (taken[i]) {
-                    ticket.classList.add("taken");
-                    ticket.title = taken[i].username ? `@${taken[i].username}` : `ID ${taken[i].user_id}`;
-                    if (taken[i].user_id === myId) {
-                        ticket.classList.add("my");
-                        ticket.onclick = () => releaseTicket(i);
+                    if (taken[i]) {
+                        ticket.classList.add("taken");
+                        ticket.title = taken[i].username ? `@${taken[i].username}` : `ID ${taken[i].user_id}`;
+                        if (taken[i].user_id === myId) {
+                            ticket.classList.add("my");
+                            ticket.onclick = () => releaseTicket(i);
+                        }
+                    } else {
+                        ticket.classList.add("free");
+                        ticket.onclick = () => buyTicket(i);
                     }
-                } else {
-                    ticket.classList.add("free");
-                    ticket.onclick = () => buyTicket(i);
+
+                    grid.appendChild(ticket);
                 }
 
-                grid.appendChild(ticket);
-            }
-
-            if (user && user.id === MY_ADMIN_ID) {
-                document.getElementById("draw").style.display = "block";
+                const drawBtn = document.getElementById("draw");
+                if (giveawayData?.status === "finished") {
+                    drawBtn.disabled = true;
+                    drawBtn.style.opacity = "0.5";
+                    drawBtn.innerText = "Розыгрыш проведён";
+                    document.getElementById("status").innerHTML = `<span style="color:gold;">Розыгрыш завершён. Победитель — номер ${giveawayData.winner_ticket}</span>`;
+                } else if (user && user.id === MY_ADMIN_ID) {
+                    drawBtn.style.display = "block";
+                    drawBtn.disabled = false;
+                    drawBtn.innerText = "Провести розыгрыш";
+                }
+            } catch (e) {
+                document.getElementById("status").innerHTML = "Ошибка загрузки розыгрыша";
             }
         }
 
@@ -240,7 +258,7 @@
             try {
                 await api(`/api/giveaway/${currentGiveawayId}/buy_ticket`, "POST", { ticket_number: number });
                 document.getElementById("status").innerHTML = `<span style="color:green;">Номер ${number} ваш!</span>`;
-                openGiveaway(currentGiveawayId);
+                await openGiveaway(currentGiveawayId);
             } catch (e) {
                 document.getElementById("status").innerHTML = `<span style="color:red;">${e.message}</span>`;
             }
@@ -251,7 +269,7 @@
             try {
                 await api(`/api/giveaway/${currentGiveawayId}/release_ticket`, "POST", { ticket_number: number });
                 document.getElementById("status").innerHTML = `<span style="color:green;">Номер ${number} освобождён</span>`;
-                openGiveaway(currentGiveawayId);
+                await openGiveaway(currentGiveawayId);
             } catch (e) {
                 document.getElementById("status").innerHTML = `<span style="color:red;">${e.message}</span>`;
             }
@@ -259,19 +277,7 @@
 
         async function animateDraw() {
             const status = document.getElementById("status");
-            status.innerHTML = "Прокручиваем номера... 🎰";
-
-            const giveawayData = await api(`/api/giveaway/${currentGiveawayId}`);
-            const maxTicket = giveawayData?.ticket_count || 100;
-
-            const spins = 80;
-            const delay = 60;
-
-            for (let i = 0; i < spins; i++) {
-                const num = Math.floor(Math.random() * maxTicket) + 1;
-                status.innerHTML = `Номер: <span style="font-size:48px; color:gold;">${num}</span>`;
-                await new Promise(r => setTimeout(r, delay + i * 1.5));
-            }
+            status.innerHTML = "Проверяем возможность розыгрыша...";
 
             try {
                 const initData = tg.initData;
@@ -291,13 +297,52 @@
 
                 const result = await res.json();
 
-                if (result.status === "success") {
-                    const w = result.winner;
-                    status.innerHTML = `<span style="font-size:32px; color:gold;">Победитель: ${w.username ? '@' + w.username : w.name} (номер ${w.ticket})</span>`;
-                    confetti({ particleCount: 300, spread: 100, origin: { y: 0.6 } });
-                } else {
-                    status.innerHTML = "Нет участников или ошибка";
+                if (result.status === "already_drawn") {
+                    status.innerHTML = `<span style="color:gold;">Розыгрыш уже проведён. Победитель — номер ${result.winner_ticket}</span>`;
+                    return;
                 }
+
+                if (result.status === "no_tickets") {
+                    status.innerHTML = "Нет участников";
+                    return;
+                }
+
+                if (result.status !== "success") {
+                    status.innerHTML = "Ошибка розыгрыша";
+                    return;
+                }
+
+                const winnerTicket = result.winner.ticket;
+
+                status.innerHTML = "Прокручиваем номера... 🎰";
+
+                const totalTickets = (await api(`/api/giveaway/${currentGiveawayId}`))?.ticket_count || 100;
+
+                const spins = 80;
+                const delay = 60;
+
+                for (let i = 0; i < spins - 10; i++) {
+                    const num = Math.floor(Math.random() * totalTickets) + 1;
+                    status.innerHTML = `Номер: <span style="font-size:48px; color:gold;">${num}</span>`;
+                    await new Promise(r => setTimeout(r, delay + i * 1.5));
+                }
+
+                for (let i = 0; i < 10; i++) {
+                    status.innerHTML = `Номер: <span style="font-size:48px; color:gold;">${winnerTicket}</span>`;
+                    await new Promise(r => setTimeout(r, delay + i * 3));
+                }
+
+                const w = result.winner;
+                status.innerHTML = `<span style="font-size:32px; color:gold;">Победитель: ${w.username ? '@' + w.username : w.name} (номер ${w.ticket})</span>`;
+                confetti({ particleCount: 300, spread: 100, origin: { y: 0.6 } });
+
+                const drawBtn = document.getElementById("draw");
+                drawBtn.disabled = true;
+                drawBtn.style.opacity = "0.5";
+                drawBtn.innerText = "Розыгрыш проведён";
+
+                await openGiveaway(currentGiveawayId);
+
             } catch (e) {
                 status.innerHTML = "Ошибка розыгрыша: " + e.message;
                 console.error("Ошибка draw:", e);
@@ -359,8 +404,19 @@
             };
         };
 
+        // Автообновление каждые 4 секунды
+        function startAutoRefresh() {
+            if (autoRefreshInterval) clearInterval(autoRefreshInterval);
+            autoRefreshInterval = setInterval(() => {
+                if (document.getElementById("current-giveaway").style.display === "block") {
+                    openGiveaway(currentGiveawayId);
+                } else {
+                    loadGiveaways(true);
+                }
+            }, 4000);
+        }
+
         // Запуск
         loadGiveaways();
+        startAutoRefresh();
     </script>
-</body>
-</html>
