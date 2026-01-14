@@ -89,7 +89,7 @@
     </style>
 </head>
 <body>
-    <!-- Кнопка создания розыгрыша — видна ТОЛЬКО админу -->
+    <!-- Кнопка создания — только для админа -->
     <div id="admin-create-section" style="display: none; margin-bottom: 20px;">
         <button id="create-btn">Создать розыгрыш</button>
     </div>
@@ -111,20 +111,16 @@
     <input type="file" id="photo-input" accept="image/*" style="display:none;">
 
     <script>
-        const BACKEND = "https://subaxillary-grayson-leprously.ngrok-free.dev"; // ← замени на свой URL
+        const BACKEND = "https://subaxillary-grayson-leprously.ngrok-free.dev"; // ← свой URL
         const tg = Telegram.WebApp;
         tg.ready();
         tg.expand();
 
-        const MY_ADMIN_ID = 1913224845; // твой Telegram ID
+        const MY_ADMIN_ID = 1913224845;
 
         let currentGiveawayId = null;
         let autoRefreshInterval = null;
 
-        console.log("Mini App запущен");
-        console.log("User ID:", tg.initDataUnsafe.user?.id);
-
-        // Проверка админа
         const user = tg.initDataUnsafe.user;
         const isAdmin = user && user.id === MY_ADMIN_ID;
 
@@ -134,25 +130,42 @@
         }
 
         async function api(endpoint, method = "GET", body = null) {
+            let url = `${BACKEND}${endpoint}`;
             const initData = tg.initData;
+
+            // Добавляем init_data в query для ВСЕХ запросов
+            if (initData) {
+                const separator = url.includes('?') ? '&' : '?';
+                url += `${separator}init_data=${encodeURIComponent(initData)}`;
+            }
+
             const headers = {
-                "Content-Type": "application/json",
                 "ngrok-skip-browser-warning": "69420"
             };
+
+            if (method !== "GET" && method !== "HEAD") {
+                headers["Content-Type"] = "application/json";
+            }
+
             try {
-                const res = await fetch(`${BACKEND}${endpoint}`, {
+                const res = await fetch(url, {
                     method,
                     headers,
-                    body: body ? JSON.stringify({ ...body, init_data: initData }) : null
+                    body: body ? JSON.stringify(body) : null
                 });
+
                 if (!res.ok) {
-                    const text = await res.text();
-                    throw new Error(`Статус ${res.status}: ${text}`);
+                    let text = "";
+                    try { text = await res.text(); } catch {}
+                    throw new Error(`Статус ${res.status}${text ? ': ' + text : ''}`);
                 }
+
                 return await res.json();
             } catch (e) {
                 console.error("Ошибка API:", e);
-                document.getElementById("status").innerHTML = `<span style="color:red;">Ошибка: ${e.message}</span>`;
+                if (document.getElementById("status")) {
+                    document.getElementById("status").innerHTML = `<span style="color:red;">Ошибка: ${e.message}</span>`;
+                }
                 throw e;
             }
         }
@@ -160,8 +173,6 @@
         async function loadGiveaways(silent = false) {
             try {
                 const data = await api("/api/giveaways");
-                if (!data) return;
-
                 const container = document.getElementById("giveaways");
                 container.innerHTML = "";
                 data.forEach(g => {
@@ -178,25 +189,16 @@
                     container.appendChild(div);
                 });
             } catch (e) {
-                if (!silent) document.getElementById("status").innerHTML = "Не удалось загрузить список";
+                if (!silent) {
+                    document.getElementById("status").innerHTML = "Не удалось загрузить список";
+                }
             }
         }
 
         async function deleteGiveaway(id) {
             if (!confirm("Удалить розыгрыш навсегда?")) return;
-
-            const initData = tg.initData;
-            const url = `${BACKEND}/api/giveaway/${id}?init_data=${encodeURIComponent(initData)}`;
-
             try {
-                const res = await fetch(url, {
-                    method: "DELETE",
-                    headers: { "ngrok-skip-browser-warning": "69420" }
-                });
-                if (!res.ok) {
-                    const text = await res.text();
-                    throw new Error(`Статус ${res.status}: ${text}`);
-                }
+                await api(`/api/giveaway/${id}`, "DELETE");
                 alert("Розыгрыш удалён");
                 await loadGiveaways();
             } catch (e) {
@@ -252,14 +254,16 @@
                     drawBtn.disabled = true;
                     drawBtn.style.opacity = "0.5";
                     drawBtn.innerText = "Розыгрыш проведён";
-                    document.getElementById("status").innerHTML = `<span style="color:gold;">Розыгрыш завершён. Победитель — номер ${giveawayData.winner_ticket}</span>`;
+                    document.getElementById("status").innerHTML = `<span style="color:gold;">Розыгрыш завершён. Победитель — номер ${giveawayData.winner_ticket || "?"}</span>`;
                 } else if (isAdmin) {
                     drawBtn.style.display = "block";
                     drawBtn.disabled = false;
                     drawBtn.innerText = "Провести розыгрыш";
+                } else {
+                    drawBtn.style.display = "none";
                 }
             } catch (e) {
-                document.getElementById("status").innerHTML = "Ошибка загрузки розыгрыша";
+                document.getElementById("status").innerHTML = `<span style="color:red;">Не удалось загрузить розыгрыш: ${e.message}</span>`;
             }
         }
 
@@ -290,20 +294,7 @@
             status.innerHTML = "Проверяем возможность розыгрыша...";
 
             try {
-                const initData = tg.initData;
-                const url = `/api/giveaway/${currentGiveawayId}/draw?init_data=${encodeURIComponent(initData)}`;
-
-                const res = await fetch(BACKEND + url, {
-                    method: "POST",
-                    headers: { "ngrok-skip-browser-warning": "69420" }
-                });
-
-                if (!res.ok) {
-                    const text = await res.text();
-                    throw new Error(`Статус ${res.status}: ${text}`);
-                }
-
-                const result = await res.json();
+                const result = await api(`/api/giveaway/${currentGiveawayId}/draw`, "POST");
 
                 if (result.status === "already_drawn") {
                     status.innerHTML = `<span style="color:gold;">Розыгрыш уже проведён. Победитель — номер ${result.winner_ticket}</span>`;
@@ -324,7 +315,8 @@
 
                 status.innerHTML = "Прокручиваем номера... 🎰";
 
-                const totalTickets = (await api(`/api/giveaway/${currentGiveawayId}`))?.ticket_count || 100;
+                const giveawayData = await api(`/api/giveaway/${currentGiveawayId}`);
+                const totalTickets = giveawayData?.ticket_count || 100;
 
                 const spins = 80;
                 const delay = 60;
@@ -353,14 +345,13 @@
 
             } catch (e) {
                 status.innerHTML = "Ошибка розыгрыша: " + e.message;
-                console.error("Ошибка draw:", e);
             }
         }
 
         document.getElementById("draw").onclick = animateDraw;
         document.getElementById("refresh").onclick = () => openGiveaway(currentGiveawayId);
 
-        // Обработчик кнопки создания — только если админ
+        // Создание розыгрыша — только админ
         if (isAdmin) {
             document.getElementById("create-btn").onclick = () => {
                 const title = prompt("Название розыгрыша");
@@ -407,7 +398,7 @@
                                 loadGiveaways();
                             }
                         }).catch(e => {
-                            alert("Ошибка создания: " + (e.message || JSON.stringify(e)));
+                            alert("Ошибка создания: " + e.message);
                         });
                     };
                     reader.readAsDataURL(file);
@@ -415,7 +406,7 @@
             };
         }
 
-        // Автообновление каждые 4 секунды
+        // Автообновление
         function startAutoRefresh() {
             if (autoRefreshInterval) clearInterval(autoRefreshInterval);
             autoRefreshInterval = setInterval(() => {
