@@ -89,9 +89,10 @@
     </style>
 </head>
 <body>
-    <h1>Розыгрыши</h1>
-
-    <button id="create-btn">Создать розыгрыш</button>
+    <!-- Кнопка создания розыгрыша — видна ТОЛЬКО админу -->
+    <div id="admin-create-section" style="display: none; margin-bottom: 20px;">
+        <button id="create-btn">Создать розыгрыш</button>
+    </div>
 
     <div id="giveaways"></div>
 
@@ -110,18 +111,27 @@
     <input type="file" id="photo-input" accept="image/*" style="display:none;">
 
     <script>
-        const BACKEND = "https://subaxillary-grayson-leprously.ngrok-free.dev";
+        const BACKEND = "https://subaxillary-grayson-leprously.ngrok-free.dev"; // ← замени на свой URL
         const tg = Telegram.WebApp;
         tg.ready();
         tg.expand();
 
-        const MY_ADMIN_ID = 1913224845;
+        const MY_ADMIN_ID = 1913224845; // твой Telegram ID
 
         let currentGiveawayId = null;
         let autoRefreshInterval = null;
 
         console.log("Mini App запущен");
         console.log("User ID:", tg.initDataUnsafe.user?.id);
+
+        // Проверка админа
+        const user = tg.initDataUnsafe.user;
+        const isAdmin = user && user.id === MY_ADMIN_ID;
+
+        // Показываем кнопку создания только админу
+        if (isAdmin) {
+            document.getElementById("admin-create-section").style.display = "block";
+        }
 
         async function api(endpoint, method = "GET", body = null) {
             const initData = tg.initData;
@@ -163,7 +173,7 @@
                         <img src="${g.photo_url}" style="width:100%; max-height:200px; object-fit:cover; border-radius:12px;">
                         <p>Номерков: ${g.ticket_count} × ${g.ticket_price} ₽</p>
                         <button onclick="openGiveaway(${g.id})">Открыть</button>
-                        ${g.status !== 'finished' ? `<button class="delete-btn" onclick="deleteGiveaway(${g.id})">Удалить</button>` : ''}
+                        ${g.status !== 'finished' && isAdmin ? `<button class="delete-btn" onclick="deleteGiveaway(${g.id})">Удалить</button>` : ''}
                     `;
                     container.appendChild(div);
                 });
@@ -181,11 +191,12 @@
             try {
                 const res = await fetch(url, {
                     method: "DELETE",
-                    headers: {
-                        "ngrok-skip-browser-warning": "69420"
-                    }
+                    headers: { "ngrok-skip-browser-warning": "69420" }
                 });
-                if (!res.ok) throw new Error(`Статус ${res.status}`);
+                if (!res.ok) {
+                    const text = await res.text();
+                    throw new Error(`Статус ${res.status}: ${text}`);
+                }
                 alert("Розыгрыш удалён");
                 await loadGiveaways();
             } catch (e) {
@@ -212,7 +223,6 @@
                 grid.innerHTML = "";
 
                 const taken = ticketsData?.taken || {};
-                const user = tg.initDataUnsafe.user;
                 const myId = user ? user.id : null;
 
                 const totalTickets = giveawayData?.ticket_count || 100;
@@ -243,7 +253,7 @@
                     drawBtn.style.opacity = "0.5";
                     drawBtn.innerText = "Розыгрыш проведён";
                     document.getElementById("status").innerHTML = `<span style="color:gold;">Розыгрыш завершён. Победитель — номер ${giveawayData.winner_ticket}</span>`;
-                } else if (user && user.id === MY_ADMIN_ID) {
+                } else if (isAdmin) {
                     drawBtn.style.display = "block";
                     drawBtn.disabled = false;
                     drawBtn.innerText = "Провести розыгрыш";
@@ -285,9 +295,7 @@
 
                 const res = await fetch(BACKEND + url, {
                     method: "POST",
-                    headers: {
-                        "ngrok-skip-browser-warning": "69420"
-                    }
+                    headers: { "ngrok-skip-browser-warning": "69420" }
                 });
 
                 if (!res.ok) {
@@ -352,57 +360,60 @@
         document.getElementById("draw").onclick = animateDraw;
         document.getElementById("refresh").onclick = () => openGiveaway(currentGiveawayId);
 
-        document.getElementById("create-btn").onclick = () => {
-            const title = prompt("Название розыгрыша");
-            const desc = prompt("Описание");
-            const count = prompt("Количество номерков");
-            const price = prompt("Цена за 1 номерок (руб)");
+        // Обработчик кнопки создания — только если админ
+        if (isAdmin) {
+            document.getElementById("create-btn").onclick = () => {
+                const title = prompt("Название розыгрыша");
+                const desc = prompt("Описание");
+                const count = prompt("Количество номерков");
+                const price = prompt("Цена за 1 номерок (руб)");
 
-            if (!title || !desc || !count || !price) {
-                alert("Заполните все поля!");
-                return;
-            }
-
-            const input = document.getElementById("photo-input");
-            input.click();
-
-            input.onchange = () => {
-                const file = input.files[0];
-                if (!file) {
-                    alert("Фото не выбрано");
+                if (!title || !desc || !count || !price) {
+                    alert("Заполните все поля!");
                     return;
                 }
 
-                if (file.size > 2 * 1024 * 1024) {
-                    alert("Фото слишком большое! Максимум 2 МБ.");
-                    return;
-                }
+                const input = document.getElementById("photo-input");
+                input.click();
 
-                const reader = new FileReader();
-                reader.onload = (e) => {
-                    const photo = e.target.result;
+                input.onchange = () => {
+                    const file = input.files[0];
+                    if (!file) {
+                        alert("Фото не выбрано");
+                        return;
+                    }
 
-                    api("/api/create_giveaway", "POST", {
-                        title,
-                        description: desc,
-                        photo_url: photo,
-                        ticket_count: parseInt(count),
-                        ticket_price: parseFloat(price)
-                    }).then(res => {
-                        if (res && res.giveaway_id) {
-                            alert(`Розыгрыш создан! ID: ${res.giveaway_id}`);
-                            loadGiveaways();
-                        } else {
-                            alert("Розыгрыш создан, но ID не вернулся. Проверьте список.");
-                            loadGiveaways();
-                        }
-                    }).catch(e => {
-                        alert("Ошибка создания: " + (e.message || JSON.stringify(e)));
-                    });
+                    if (file.size > 2 * 1024 * 1024) {
+                        alert("Фото слишком большое! Максимум 2 МБ.");
+                        return;
+                    }
+
+                    const reader = new FileReader();
+                    reader.onload = (e) => {
+                        const photo = e.target.result;
+
+                        api("/api/create_giveaway", "POST", {
+                            title,
+                            description: desc,
+                            photo_url: photo,
+                            ticket_count: parseInt(count),
+                            ticket_price: parseFloat(price)
+                        }).then(res => {
+                            if (res && res.giveaway_id) {
+                                alert(`Розыгрыш создан! ID: ${res.giveaway_id}`);
+                                loadGiveaways();
+                            } else {
+                                alert("Розыгрыш создан, но ID не вернулся. Проверьте список.");
+                                loadGiveaways();
+                            }
+                        }).catch(e => {
+                            alert("Ошибка создания: " + (e.message || JSON.stringify(e)));
+                        });
+                    };
+                    reader.readAsDataURL(file);
                 };
-                reader.readAsDataURL(file);
             };
-        };
+        }
 
         // Автообновление каждые 4 секунды
         function startAutoRefresh() {
@@ -420,3 +431,5 @@
         loadGiveaways();
         startAutoRefresh();
     </script>
+</body>
+</html>
