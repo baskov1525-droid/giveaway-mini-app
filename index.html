@@ -116,8 +116,6 @@
             60%  { opacity: 1; transform: scale(1.05); }
             100% { opacity: 1; transform: scale(1) translateY(0); }
         }
-
-        /* Маленький блок победителя на главной */
         .mini-winner {
             background: linear-gradient(to right, #ffd700, #ffcc00);
             color: #222;
@@ -130,8 +128,8 @@
     </style>
 </head>
 <body>
-    <!-- Кнопка создания — только админ -->
-    <div id="admin-create-section" style="display:none; margin-bottom:20px;">
+    <!-- Кнопка создания — только для админа -->
+    <div id="admin-create-section" style="display: none; margin-bottom: 20px;">
         <button id="create-btn">Создать розыгрыш</button>
     </div>
 
@@ -144,7 +142,6 @@
         <p>Цена номерка: <span id="price"></span> ₽</p>
         <p>Всего номерков: <span id="total"></span></p>
 
-        <!-- Блок победителя -->
         <div id="winner-container" style="display:none;"></div>
 
         <div id="tickets-grid" class="tickets-grid"></div>
@@ -161,16 +158,25 @@
         tg.ready();
         tg.expand();
 
-        const MY_ADMIN_ID = 1913224845;
+        const MY_ADMIN_ID = 1913224845; // ← здесь должен быть ТВОЙ Telegram ID
 
         let currentGiveawayId = null;
         let autoRefreshInterval = null;
 
-        const user = tg.initDataUnsafe.user;
-        const isAdmin = user && user.id === MY_ADMIN_ID;
+        // Проверка админа — с отладкой
+        const user = tg.initDataUnsafe?.user;
+        const isAdmin = user && Number(user.id) === MY_ADMIN_ID;
 
-        if (isAdmin) {
-            document.getElementById("admin-create-section").style.display = "block";
+        console.log("User ID из Telegram:", user?.id ?? "не загрузился");
+        console.log("isAdmin:", isAdmin);
+
+        // Показываем кнопку создания
+        const createSection = document.getElementById("admin-create-section");
+        if (createSection) {
+            createSection.style.display = isAdmin ? "block" : "none";
+            console.log(isAdmin ? "Кнопка СОЗДАТЬ показана — вы админ" : "Кнопка СОЗДАТЬ скрыта");
+        } else {
+            console.error("Элемент #admin-create-section НЕ НАЙДЕН в HTML!");
         }
 
         async function api(endpoint, method = "GET", body = null) {
@@ -208,26 +214,27 @@
             }
         }
 
-        // Рендер большого блока победителя внутри розыгрыша
-        function showWinner(username, ticket) {
+        // ──────────────────────────────
+        //  Функция рендера победителя
+        // ──────────────────────────────
+        function showWinner(ticket) {
             const container = document.getElementById("winner-container");
             container.innerHTML = `
                 <div class="winner-block">
                     <div class="trophy-emoji">🏆</div>
-                    <div class="winner-title">Победитель!</div>
+                    <div class="winner-title">Победитель объявлен!</div>
                     <div class="winner-info">
-                        ${username ? '@' + username : 'Участник'} — билет №${ticket}
+                        Билет №${ticket}
                     </div>
                 </div>
             `;
             container.style.display = "block";
 
-            // Конфетти
             confetti({
                 particleCount: 150,
                 spread: 100,
                 origin: { y: 0.6 },
-                colors: ['#ffd700', '#ffaa00', '#ffffff', '#ffcc00']
+                colors: ['#ffd700', '#ffaa00', '#ffffff']
             });
         }
 
@@ -322,8 +329,7 @@
                     drawBtn.style.display = "none";
 
                     if (giveawayData.winner_ticket) {
-                        // Показываем победителя
-                        showWinner("победитель", giveawayData.winner_ticket);
+                        showWinner(giveawayData.winner_ticket);
                         statusEl.innerHTML = "";
                     } else {
                         statusEl.innerHTML = `<span style="color:gold; font-size:20px;">Розыгрыш завершён. Победитель скоро будет объявлен.</span>`;
@@ -343,20 +349,33 @@
         }
 
         // ────────────────────────────────────────────────
-        //  Остальные функции (buyTicket, releaseTicket, animateDraw, deleteGiveaway, create-btn handler, autoRefresh)
-        //  вставьте их из вашего предыдущего рабочего index.html
+        //  Вставьте сюда ваши рабочие функции:
+        //  buyTicket, releaseTicket, animateDraw, deleteGiveaway,
+        //  обработчик create-btn.onclick, startAutoRefresh и т.д.
         // ────────────────────────────────────────────────
 
-        // Пример заглушки для остальных функций (замените на свои)
-        async function buyTicket(number) { /* ваш код */ }
-        async function releaseTicket(number) { /* ваш код */ }
-        async function animateDraw() { /* ваш код */ }
-        async function deleteGiveaway(id) { /* ваш код */ }
+        // Пример заглушки — замените на свой код
+        async function buyTicket(number) {
+            alert("Покупка билета " + number + " — функция не реализована в этом примере");
+        }
 
-        // Автообновление (если было)
+        async function releaseTicket(number) {
+            alert("Освобождение билета " + number + " — функция не реализована");
+        }
+
+        async function animateDraw() {
+            alert("Розыгрыш запущен — функция не реализована");
+        }
+
+        async function deleteGiveaway(id) {
+            if (confirm("Удалить розыгрыш #" + id + "?")) {
+                alert("Удаление — функция не реализована");
+            }
+        }
+
+        // Автообновление (если нужно)
         function startAutoRefresh() {
-            if (autoRefreshInterval) clearInterval(autoRefreshInterval);
-            autoRefreshInterval = setInterval(() => {
+            setInterval(() => {
                 if (document.getElementById("current-giveaway").style.display === "block") {
                     openGiveaway(currentGiveawayId);
                 } else {
@@ -365,9 +384,16 @@
             }, 4000);
         }
 
-        // Запуск
+        // Запуск приложения
         loadGiveaways();
         startAutoRefresh();
+
+        // Обработчик кнопки создания (только если админ)
+        if (isAdmin) {
+            document.getElementById("create-btn").onclick = () => {
+                alert("Создание розыгрыша — вставьте сюда ваш рабочий код");
+            };
+        }
     </script>
 </body>
 </html>
