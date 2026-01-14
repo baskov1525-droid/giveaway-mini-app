@@ -165,8 +165,21 @@
 
         async function deleteGiveaway(id) {
             if (!confirm("Удалить розыгрыш навсегда?")) return;
+
+            const initData = tg.initData;
+            const url = `${BACKEND}/api/giveaway/${id}?init_data=${encodeURIComponent(initData)}`;
+
             try {
-                await api(`/api/giveaway/${id}`, "DELETE");
+                const res = await fetch(url, {
+                    method: "DELETE",
+                    headers: {
+                        "ngrok-skip-browser-warning": "69420"
+                    }
+                });
+                if (!res.ok) {
+                    const text = await res.text();
+                    throw new Error(`Статус ${res.status}: ${text}`);
+                }
                 alert("Розыгрыш удалён");
                 await loadGiveaways();
             } catch (e) {
@@ -312,7 +325,8 @@
                         description: desc,
                         photo_url: photo,
                         ticket_count: parseInt(count),
-                        ticket_price: parseFloat(price)
+                        ticket_price: parseFloat(price),
+                        init_data: tg.initData  // ← явно добавляем init_data
                     }).then(res => {
                         if (res && res.giveaway_id) {
                             alert(`Розыгрыш создан! ID: ${res.giveaway_id}`);
