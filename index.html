@@ -274,7 +274,23 @@
             }
 
             try {
-                const result = await api(`/api/giveaway/${currentGiveawayId}/draw`, "POST");
+                const initData = tg.initData;
+                const url = `/api/giveaway/${currentGiveawayId}/draw?init_data=${encodeURIComponent(initData)}`;
+
+                const res = await fetch(BACKEND + url, {
+                    method: "POST",
+                    headers: {
+                        "ngrok-skip-browser-warning": "69420"
+                    }
+                });
+
+                if (!res.ok) {
+                    const text = await res.text();
+                    throw new Error(`Статус ${res.status}: ${text}`);
+                }
+
+                const result = await res.json();
+
                 if (result.status === "success") {
                     const w = result.winner;
                     status.innerHTML = `<span style="font-size:32px; color:gold;">Победитель: ${w.username ? '@' + w.username : w.name} (номер ${w.ticket})</span>`;
@@ -283,7 +299,8 @@
                     status.innerHTML = "Нет участников или ошибка";
                 }
             } catch (e) {
-                status.innerHTML = "Ошибка розыгрыша";
+                status.innerHTML = "Ошибка розыгрыша: " + e.message;
+                console.error("Ошибка draw:", e);
             }
         }
 
@@ -325,8 +342,7 @@
                         description: desc,
                         photo_url: photo,
                         ticket_count: parseInt(count),
-                        ticket_price: parseFloat(price),
-                        init_data: tg.initData  // ← явно добавляем init_data
+                        ticket_price: parseFloat(price)
                     }).then(res => {
                         if (res && res.giveaway_id) {
                             alert(`Розыгрыш создан! ID: ${res.giveaway_id}`);
